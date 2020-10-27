@@ -23,7 +23,7 @@ def lab_to_rgb(img):
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')
 
-        return (255 * np.clip(color.lab2rgb(img), 0, 1)).astype(np.uint8)
+        return (255 * np.clip(color.lab2rgb(img), 0, 1))
 
 def rgb_to_lab(img):
     #assert img.dtype == np.uint8

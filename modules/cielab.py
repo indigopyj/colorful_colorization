@@ -174,7 +174,7 @@ class CIELAB:
         color_space_rgb = lab_to_rgb(color_space_lab)
 
         # mask out of gamut colors
-        color_space_rgb[~self.ab_gamut_mask, :] = 255
+        color_space_rgb[~self.ab_gamut_mask, :] = 1.
 
         # display color space
         self._plot_ab_matrix(color_space_rgb,

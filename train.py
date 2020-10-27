@@ -76,17 +76,21 @@ def train(args):
 
 
             # lr = optim.param_groups[0]['lr']
-            # writer_train.add_scalar('lr', lr, epoch)
             writer_train.add_scalar('loss', loss, epoch)
             print('training %d iters, loss is %.4f' % (epoch, loss))
 
             # Learning rate decay
-            # if (epoch+1) % lr_update_step == 0:
-            #     if lr > 1e-8:
-            #         lr *= 0.316
-            #     for param_group in optim.param_groups:
-            #         param_group['lr'] = lr
-            #     print ('Decayed learning rates, lr: %4f' % (lr))
+            if (epoch+1) == 200000:
+                lr = 1e-5
+                for param_group in optim.param_groups:
+                    param_group['lr'] = lr
+                print ('Decayed learning rates, lr: %4f' % (lr))
+            elif (epoch+1) == 375000:
+                lr = 3e-6
+                for param_group in optim.param_groups:
+                    param_group['lr'] = lr
+                print('Decayed learning rates, lr: %4f' % (lr))
+
 
 
             if epoch % 1 == 0 or epoch == num_epoch:
