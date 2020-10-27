@@ -18,12 +18,12 @@ def get_resource_path(path):
    return os.path.join(_RESOURCE_DIR, path)
 
 def lab_to_rgb(img):
-    assert img.dtype == np.float32
+    #assert img.dtype == np.float32
 
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')
 
-        return (255 * np.clip(color.lab2rgb(img), 0, 1))
+        return color.lab2rgb(img)
 
 def rgb_to_lab(img):
     #assert img.dtype == np.uint8

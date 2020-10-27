@@ -60,6 +60,8 @@ class ColorizationNetwork(nn.Module):
                                             T=annealed_mean_T,
                                             device=self.device)
 
+
+
         # rebalancing
         self.class_rebal_lambda = class_rebal_lambda
 
@@ -125,6 +127,8 @@ class ColorizationNetwork(nn.Module):
         q_pred = self.base_network(l_norm)
 
         ab_pred = self.decode_q(q_pred)
+
+
 
         return ab_pred
 

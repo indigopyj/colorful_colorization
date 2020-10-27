@@ -7,10 +7,11 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from dataloader import get_dataloader
-from skimage import color
+import torch.nn.functional as F
 from util import *
 from model import *
 from modules.cross_entropy_loss_2d import *
+import matplotlib.pyplot as plt
 
 
 def train(args):
@@ -18,12 +19,8 @@ def train(args):
 
     ## Parameter
     lr = args.lr
-    lr_update_step = args.lr_update_step
     batch_size = args.batch_size
     num_epoch = args.num_epoch
-    use_gpu = args.use_gpu
-
-
     mode = args.mode
     train_continue = args.train_continue
 
@@ -66,6 +63,8 @@ def train(args):
             color_img = rgb_to_lab(color_img.permute(0,2,3,1))
             color_img = torch.from_numpy(color_img).permute(0,3,1,2)
             q_pred, q_actual = net(sketch_img, color_img)
+
+            assert False
             optim.zero_grad()
             loss = fn_loss(q_pred, q_actual)
             loss.backward()
@@ -107,110 +106,62 @@ def test(args):
     lr = args.lr
     batch_size = args.batch_size
     num_epoch = args.num_epoch
-    load_opt = args.load_opt
-
     mode = args.mode
     train_continue = args.train_continue
 
-    # task = args.task
-    # opts = [args.opts[0], np.asarray(args.opts[1:]).astype(np.float)]
-
-    ny = args.ny
-    nx = args.nx
-    nch = args.nch
-    # nker = args.nker
-
-    network = args.network
-
-    data_dir = args.data_dir
     ckpt_dir = args.ckpt_dir
-    # log_dir = args.log_dir + "/" + network + date
-    # result_dir = args.result_dir + "/" + network + date
+    log_dir = args.log_dir
+    result_dir = args.result_dir
 
-    #    createFolder(result_dir)
+
+    createFolder(result_dir)
+
+    net = ColorizationNetwork(device=device)
+    net = net.to(device)
 
     # 로스함수 정의
-    # fn_loss = nn.BCEWithLogitsLoss().to(device)
-    fn_loss = nn.CrossEntropyLoss().to(device)
-
-    if network == "resnet":
-        # net = ResNet(in_channels=nch, out_channels=nch, norm="bnorm").to(device)
-        # net = torchvision.models.resnet50(pretrained=True)
-        net = torch.hub.load('pytorch/vision', 'resnet50', pretrained=True)
-        # for param in net.parameters():
-        #    param.requires_grad=False
-
-        num_ftrs = net.fc.in_features
-        net.fc = nn.Linear(num_ftrs, 2)
-        net = net.to(device)
-        params = net.parameters()
-    elif network == "mobilenet":
-        # net = torchvision.models.mobilenet_v2(pretrained=True)
-        # net.classifier[1] = nn.Linear(net.last_channel, 2)
-        # net = net.to(device)
-        # net = mobilenet_v2(pretrained=True, input_size=11).to(device)
-        # net.classifier = nn.Linear(net.last_channel, 2)
-        # net = net.to(device)
-        net = mobilenetv2(width_mult=0.5)
-        net.load_state_dict(torch.load('./mobilenetv2/pretrained/mobilenetv2_0.5-eaa6f9ad.pth'))
-        net.classifier = nn.Linear(net.output_channel, 2)
-        net = net.to(device)
-        params = net.parameters()
-    elif network == "efficientnet":
-        net = EfficientNet.from_pretrained('efficientnet-b0')
-        net._fc = nn.Linear(in_features=net._fc.in_features, out_features=2, bias=True)
-        params = net.parameters()
-        net = net.to(device)
+    fn_loss = CrossEntropyLoss2d().to(device)
 
     # optimizer 정의
-    optim = torch.optim.Adam(params, lr=lr)
+    optim = torch.optim.Adam(net.parameters(), lr=lr, weight_decay=1e-3, betas=(0.9, 0.99))
+
 
     if mode == "test":
-        transform = transforms.Compose([transforms.Resize([ny, nx]), transforms.ToTensor(),
-                                        transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))])
+        loader_test = get_dataloader(dataset="yumi", phase="test", batch_size=batch_size, processed_dir=".")
 
-        dataset_test = torchvision.datasets.ImageFolder(root=os.path.join(data_dir, "test"), transform=transform)
-        loader_test = DataLoader(dataset_test, batch_size=batch_size, shuffle=False, num_workers=4)
-        # print(dataset_test.classes)
-        # 부수적인 변수들 정의
-        num_data_test = len(dataset_test)
-        num_batch_test = np.ceil(num_data_test / batch_size)
-
-    if mode == "test":
-        ############# Test ################
-
-        #        createFolder(os.path.join(result_dir, "female"))
-        #       createFolder(os.path.join(result_dir, "male"))
-
-        net, optim, _ = load(ckpt_dir=ckpt_dir, net=net, optim=optim, load_opt=load_opt)
+        net, optim, _ = load(ckpt_dir=ckpt_dir, net=net, optim=optim)
         net = net.to(device)
 
         with torch.no_grad():
             net.eval()
-            avg_loss = []
-            avg_acc = []
 
-            loss_meter_test = tnt.meter.AverageValueMeter()
-            acc_meter_test = tnt.meter.ClassErrorMeter(accuracy=True)
-
-            for batch, data in enumerate(loader_test, 1):
+            for batch_idx, data in enumerate(loader_test):
                 # forward pass
-                input, label = data
-                label = label.to(device)
-                input = input.to(device)
+                sketch_img, color_img = data
+                sketch_img = sketch_img.to(device)
 
-                output = net(input)
+                prediction = net(sketch_img, color_img).cpu()
+                if(sketch_img.shape[2] != prediction.shape[2] or sketch_img.shape[3] != prediction.shape[3]):
+                    pred_resize = F.interpolate(prediction, size=sketch_img.shape[2:], mode='bilinear', align_corners=False)
 
-                loss = fn_loss(output.squeeze(), label)
-                loss_meter_test.add(loss.item())
-                acc_meter_test.add(output.data.cpu().numpy(), label.cpu().numpy().squeeze())
+                pred_lab = torch.cat((sketch_img, pred_resize), dim=1)
+                pred_rgb = lab_to_rgb(pred_lab.cpu().permute(0,2,3,1))
 
-                avg_loss += [loss_meter_test.value()[0]]
-                avg_acc += [acc_meter_test.value()[0]]
+                for index,img in enumerate(pred_rgb):
+                    img_num = batch_idx * batch_size + index + 1
+                    img = (255*np.clip(img, 0, 1)).astype('uint8')
+                    new_image_path = os.path.join(result_dir, str(img_num)+".png")
+                    plt.imsave(new_image_path, img)
 
-                print("TEST :  BATCH %04d / %04d | LOSS %.4f | ACCURACY %.4f" %
-                      (batch, num_batch_test, loss_meter_test.value()[0], acc_meter_test.value()[0]))
+                # calculate PSNR
+                pred_rgb = torch.from_numpy(pred_rgb).permute(0,3,1,2)
+                mse = torch.mean((pred_rgb - color_img) ** 2)
+                PSNR = 10 * torch.log10(1.0 / mse)
 
-        print("\nAVERAGE TEST PERFORMANCE: LOSS %.4f | ACCURACY %.4f" %
-              (np.mean(avg_loss), np.mean(avg_acc)))
+                print("%03d.png :  PSNR %.4f" %
+                      (img_num + 1, PSNR))
+
+
+
+
 
