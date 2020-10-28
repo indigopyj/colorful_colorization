@@ -35,8 +35,13 @@ def save(ckpt_dir, net, optim, epoch):
 	if not os.path.exists(ckpt_dir):
 		os.makedirs(ckpt_dir)
 
+	if torch.cuda.device_count() > 1:
+		net_state_dict = net.module.state_dict()
+	else:
+		net_state_dict = net.state_dict()
+
 	torch.save({
-		'net': net.state_dict(), 'optim': optim.state_dict()},
+		'net': net_state_dict, 'optim': optim.state_dict()},
 		"%s/model_epoch%d.pth" % (ckpt_dir, epoch))
 
 

@@ -4,15 +4,15 @@ import argparse
 import numpy as np
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from dataloader import get_dataloader
-import torch.nn.functional as F
 from util import *
 from model import *
 from modules.cross_entropy_loss_2d import *
 import matplotlib.pyplot as plt
 import torchnet as tnt
+from model2 import ECCVGenerator
+from progress.bar import Bar
 
 
 def train(args):
@@ -30,17 +30,22 @@ def train(args):
     log_dir = args.log_dir
 
 
-    net = ColorizationNetwork(device=device)
+    #net = ColorizationNetwork(device=device)
+    net = ECCVGenerator()
+
+    if torch.cuda.device_count() > 1:
+        net = nn.DataParallel(net)
     net = net.to(device)
 
     # 로스함수 정의
-    fn_loss = CrossEntropyLoss2d().to(device)
-
+    #criterion = CrossEntropyLoss2d().to(device)
+    criterion = nn.L1Loss().to(device)
     # optimizer 정의
     optim = torch.optim.Adam(net.parameters(), lr=lr, weight_decay=1e-3, betas=(0.9, 0.99))
 
     createFolder(os.path.join(log_dir, 'train'))
     writer_train = SummaryWriter(log_dir=os.path.join(log_dir, 'train'))
+
 
     if mode == 'train':
         loader_train = get_dataloader(dataset="yumi", phase="train", batch_size=batch_size, processed_dir=".")
@@ -51,49 +56,58 @@ def train(args):
             st_epoch = 0  # start epoch number
 
         net.train()
+        max_iteration = len(loader_train)
+
         for epoch in range(st_epoch + 1, num_epoch + 1):
             train_losses = tnt.meter.AverageValueMeter()
-            for (sketch_img, color_img) in loader_train:
+
+            bar = Bar("Training", max=max_iteration)
+            for batch_idx, (sketch_img, color_img) in enumerate(loader_train,1):
                 sketch_img = sketch_img.to(device, non_blocking=loader_train.pin_memory)
                 color_img = color_img.to(device, non_blocking=loader_train.pin_memory)
 
-                sketch_img = color.rgb2lab(sketch_img.permute(0,2,3,1)).astype(np.float32)
-                sketch_img_l = sketch_img[:,:,:,0]
-                color_img = color.rgb2lab(color_img.permute(0,2,3,1)).astype(np.float32)
-                color_img = torch.from_numpy(color_img).permute(0,3,1,2)
-                sketch_img_l = torch.Tensor(sketch_img_l)[:,None,:,:]
-                q_pred, q_actual = net(sketch_img_l, color_img)
+
+                # sketch_img = color.rgb2lab(sketch_img.permute(0,2,3,1)).astype(np.float32)
+                # sketch_img_l = sketch_img[:,:,:,0]
+                # color_img = color.rgb2lab(color_img.permute(0,2,3,1)).astype(np.float32)
+                # color_img = torch.from_numpy(color_img).permute(0,3,1,2)
+                # sketch_img_l = torch.Tensor(sketch_img_l)[:,None,:,:]
+                # q_pred, q_actual = net(sketch_img_l, color_img)
 
 
+                output = net(sketch_img)
                 optim.zero_grad()
-                loss = fn_loss(q_pred, q_actual)
+                #loss = criterion(q_pred, q_actual)
+                loss = criterion(output, color_img)
                 loss.backward()
                 optim.step()
                 train_losses.add(loss.item())
 
-            # if lr_scheduler is not None:
-            #     lr_scheduler.step()
+                bar.suffix = '({batch}/{size}) Loss: {loss:.4f}'.format(
+                    batch=batch_idx,
+                    size=max_iteration,
+                    loss=train_losses.value()[0]
+                )
+                bar.next()
+            bar.finish()
 
-
-            # lr = optim.param_groups[0]['lr']
             writer_train.add_scalar('loss', train_losses.value()[0], epoch)
-            print('training %d iters, loss is %.4f' % (epoch, train_losses.value()[0]))
 
             # Learning rate decay
-            if (epoch+1) == 200000:
-                lr = 1e-5
-                for param_group in optim.param_groups:
-                    param_group['lr'] = lr
-                print ('Decayed learning rates, lr: %4f' % (lr))
-            elif (epoch+1) == 375000:
-                lr = 3e-6
-                for param_group in optim.param_groups:
-                    param_group['lr'] = lr
-                print('Decayed learning rates, lr: %4f' % (lr))
+            # if (epoch+1) == 200000:
+            #     lr = 1e-5
+            #     for param_group in optim.param_groups:
+            #         param_group['lr'] = lr
+            #     print ('Decayed learning rates, lr: %4f' % (lr))
+            # elif (epoch+1) == 375000:
+            #     lr = 3e-6
+            #     for param_group in optim.param_groups:
+            #         param_group['lr'] = lr
+            #     print('Decayed learning rates, lr: %4f' % (lr))
 
 
 
-            if epoch % 5 == 0 or epoch == num_epoch:
+            if epoch % 50 == 0 or epoch == num_epoch:
                 createFolder(ckpt_dir)
                 save(ckpt_dir=ckpt_dir, net=net, optim=optim, epoch=epoch)
 
@@ -118,8 +132,8 @@ def test(args):
     createFolder(result_dir)
 
     net = ColorizationNetwork(device=device)
-    net = net.to(device)
 
+    net = net.to(device)
     # 로스함수 정의
     fn_loss = CrossEntropyLoss2d().to(device)
 

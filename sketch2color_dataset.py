@@ -78,7 +78,7 @@ class Sketch2ColorDataset(Dataset):
 
 
         # RGB to GRAY
-        #out1 = 0.299 * out1[0:1,:,:] + 0.587 * out1[1:2,:,:] + 0.114 * out1[2:3,:,:]
+        out1 = 0.299 * out1[0:1,:,:] + 0.587 * out1[1:2,:,:] + 0.114 * out1[2:3,:,:]
 
 
         return out1, out2
