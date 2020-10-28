@@ -70,12 +70,16 @@ class Sketch2ColorDataset(Dataset):
             color_img = transform1(image=color_img)['image']
             aug_output = transform2(image=sketch_img, image2=color_img)
             out1, out2 = aug_output['image'], aug_output['image2']
+
         else:
             aug_output = self.transform(image=sketch_img, image2=color_img)
             out1, out2 = aug_output['image'], aug_output['image2']
-        
+
+
+
         # RGB to GRAY
-        out1 = 0.299 * out1[0:1,:,:] + 0.587 * out1[1:2,:,:] + 0.114 * out1[2:3,:,:]
+        #out1 = 0.299 * out1[0:1,:,:] + 0.587 * out1[1:2,:,:] + 0.114 * out1[2:3,:,:]
+
 
         return out1, out2
 

@@ -104,14 +104,13 @@ class ColorizationNetwork(nn.Module):
     def _forward_encode(self, sketch_img, color_img):
         l, ab = color_img[:, :1, :, :], color_img[:, 1:, :, :]
 
-        l_norm = self._normalize_l(sketch_img)
+        l_norm = self._normalize_l(l)
 
         q_pred = self.base_network(l_norm)
 
         # downsample and encode labels
         ab = F.interpolate(ab, size=q_pred.shape[2:])
         q_actual = self.encode_ab(ab)
-
         # rebalancing
         if self.class_rebal_lambda is not None:
             color_weights = self.get_class_weights(q_actual)

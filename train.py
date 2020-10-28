@@ -12,6 +12,7 @@ from util import *
 from model import *
 from modules.cross_entropy_loss_2d import *
 import matplotlib.pyplot as plt
+import torchnet as tnt
 
 
 def train(args):
@@ -43,7 +44,6 @@ def train(args):
 
     if mode == 'train':
         loader_train = get_dataloader(dataset="yumi", phase="train", batch_size=batch_size, processed_dir=".")
-        data_iter = iter(loader_train)
         if train_continue == "on":
             net, optim, st_epoch = load(ckpt_dir=ckpt_dir, net=net, optim=optim)
 
@@ -52,31 +52,32 @@ def train(args):
 
         net.train()
         for epoch in range(st_epoch + 1, num_epoch + 1):
-            try:
-                sketch_img, color_img = next(data_iter)
-            except:
-                data_iter = iter(loader_train)
-                sketch_img, color_img = next(data_iter)
+            train_losses = tnt.meter.AverageValueMeter()
+            for (sketch_img, color_img) in loader_train:
+                sketch_img = sketch_img.to(device, non_blocking=loader_train.pin_memory)
+                color_img = color_img.to(device, non_blocking=loader_train.pin_memory)
 
-            sketch_img = sketch_img.to(device)
-            color_img = color_img.to(device)
-            color_img = rgb_to_lab(color_img.permute(0,2,3,1))
-            color_img = torch.from_numpy(color_img).permute(0,3,1,2)
-            q_pred, q_actual = net(sketch_img, color_img)
+                sketch_img = color.rgb2lab(sketch_img.permute(0,2,3,1)).astype(np.float32)
+                sketch_img_l = sketch_img[:,:,:,0]
+                color_img = color.rgb2lab(color_img.permute(0,2,3,1)).astype(np.float32)
+                color_img = torch.from_numpy(color_img).permute(0,3,1,2)
+                sketch_img_l = torch.Tensor(sketch_img_l)[:,None,:,:]
+                q_pred, q_actual = net(sketch_img_l, color_img)
 
-            assert False
-            optim.zero_grad()
-            loss = fn_loss(q_pred, q_actual)
-            loss.backward()
-            optim.step()
+
+                optim.zero_grad()
+                loss = fn_loss(q_pred, q_actual)
+                loss.backward()
+                optim.step()
+                train_losses.add(loss.item())
 
             # if lr_scheduler is not None:
             #     lr_scheduler.step()
 
 
             # lr = optim.param_groups[0]['lr']
-            writer_train.add_scalar('loss', loss, epoch)
-            print('training %d iters, loss is %.4f' % (epoch, loss))
+            writer_train.add_scalar('loss', train_losses.value()[0], epoch)
+            print('training %d iters, loss is %.4f' % (epoch, train_losses.value()[0]))
 
             # Learning rate decay
             if (epoch+1) == 200000:
@@ -92,7 +93,7 @@ def train(args):
 
 
 
-            if epoch % 1 == 0 or epoch == num_epoch:
+            if epoch % 5 == 0 or epoch == num_epoch:
                 createFolder(ckpt_dir)
                 save(ckpt_dir=ckpt_dir, net=net, optim=optim, epoch=epoch)
 
