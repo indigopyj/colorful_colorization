@@ -3,3 +3,4 @@ yumi/
 checkpoint/
 log/
 result/
+__pycache__/
