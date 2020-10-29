@@ -66,3 +66,20 @@ def load(ckpt_dir, net, optim, load_opt=None):
 
 	return net, optim, epoch
 
+
+def calculate_psnr_np(img1, img2):
+    SE_map = (1.*img1-img2)**2
+    cur_MSE = np.mean(SE_map)
+    return 20*np.log10(255./np.sqrt(cur_MSE))
+
+def calculate_psnr_torch(img1, img2):
+    """
+    img1, img2 expected to float RGB torch tensors, which are scaled to 0~1
+    """
+    img1 = (torch.clamp(img1.permute(0, 2, 3, 1), 0, 1) * 255.0).type(torch.uint8)
+    img2 = (torch.clamp(img2.permute(0, 2, 3, 1), 0, 1) * 255.0).type(torch.uint8)
+
+    SE_map = (1.*img1-img2)**2
+    cur_MSE = torch.mean(SE_map.view(SE_map.shape[0], -1), axis=1)
+    return 20*torch.log10(255./torch.sqrt(cur_MSE))
+

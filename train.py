@@ -3,7 +3,6 @@ import os
 import argparse
 import numpy as np
 import torch
-import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 from dataloader import get_dataloader
 from util import *
@@ -83,9 +82,11 @@ def train(args):
                 optim.step()
                 train_losses.add(loss.item())
 
-                bar.suffix = '({batch}/{size}) Loss: {loss:.4f}'.format(
+                bar.suffix = '({batch}/{size}) Epoch : ({epoch}/{num_epoch})Loss: {loss:.4f}'.format(
                     batch=batch_idx,
                     size=max_iteration,
+                    epoch=epoch,
+                    num_epoch=num_epoch,
                     loss=train_losses.value()[0]
                 )
                 bar.next()
@@ -131,50 +132,46 @@ def test(args):
 
     createFolder(result_dir)
 
-    net = ColorizationNetwork(device=device)
+    net = ECCVGenerator()
 
     net = net.to(device)
     # 로스함수 정의
-    fn_loss = CrossEntropyLoss2d().to(device)
-
+    criterion = nn.L1Loss().to(device)
     # optimizer 정의
     optim = torch.optim.Adam(net.parameters(), lr=lr, weight_decay=1e-3, betas=(0.9, 0.99))
 
 
     if mode == "test":
-        loader_test = get_dataloader(dataset="yumi", phase="test", batch_size=batch_size, processed_dir=".")
+        loader_test = get_dataloader(dataset="yumi", phase="test", batch_size=batch_size)
 
         net, optim, _ = load(ckpt_dir=ckpt_dir, net=net, optim=optim)
         net = net.to(device)
 
         with torch.no_grad():
             net.eval()
-
-            for batch_idx, data in enumerate(loader_test):
+            for batch_idx, (sketch_img, color_img) in enumerate(loader_test, 1):
                 # forward pass
-                sketch_img, color_img = data
                 sketch_img = sketch_img.to(device)
 
-                prediction = net(sketch_img, color_img).cpu()
-                if(sketch_img.shape[2] != prediction.shape[2] or sketch_img.shape[3] != prediction.shape[3]):
-                    pred_resize = F.interpolate(prediction, size=sketch_img.shape[2:], mode='bilinear', align_corners=False)
+                output = net(sketch_img)
 
-                pred_lab = torch.cat((sketch_img, pred_resize), dim=1)
-                pred_rgb = lab_to_rgb(pred_lab.cpu().permute(0,2,3,1))
+                PSNR = calculate_psnr_torch(output, color_img)
+                print("Batch num : %d | PSNR :  %.4f" %(batch_idx, PSNR))
 
-                for index,img in enumerate(pred_rgb):
+                # if(sketch_img.shape[2] != prediction.shape[2] or sketch_img.shape[3] != prediction.shape[3]):
+                #     pred_resize = F.interpolate(prediction, size=sketch_img.shape[2:], mode='bilinear', align_corners=False)
+                #
+                # pred_lab = torch.cat((sketch_img, pred_resize), dim=1)
+                # pred_rgb = lab_to_rgb(pred_lab.cpu().permute(0,2,3,1))
+
+
+                output_ = output.cpu().permute(0, 2, 3, 1)
+                for index,img in enumerate(output_):
                     img_num = batch_idx * batch_size + index + 1
                     img = (255*np.clip(img, 0, 1)).astype('uint8')
                     new_image_path = os.path.join(result_dir, str(img_num)+".png")
                     plt.imsave(new_image_path, img)
 
-                # calculate PSNR
-                pred_rgb = torch.from_numpy(pred_rgb).permute(0,3,1,2)
-                mse = torch.mean((pred_rgb - color_img) ** 2)
-                PSNR = 10 * torch.log10(1.0 / mse)
-
-                print("%03d.png :  PSNR %.4f" %
-                      (img_num + 1, PSNR))
 
 
 
