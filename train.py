@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import torchnet as tnt
 from model2 import ECCVGenerator
 from progress.bar import Bar
-
+from util import calculate_psnr_torch
 
 def train(args):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -146,33 +146,36 @@ def test(args):
 
         net, optim, _ = load(ckpt_dir=ckpt_dir, net=net, optim=optim)
         net = net.to(device)
-
+        tot_psnr = 0.0
+        tot_samples = 0.0
         with torch.no_grad():
             net.eval()
             for batch_idx, (sketch_img, color_img) in enumerate(loader_test, 1):
-                # forward pass
+                bar = Bar('PSNR', max=len(loader_test))
                 sketch_img = sketch_img.to(device)
-
-                output = net(sketch_img)
-
-                PSNR = calculate_psnr_torch(output, color_img)
-                print("Batch num : %d | PSNR :  %.4f" %(batch_idx, PSNR))
-
+                output = net(sketch_img).cpu()
                 # if(sketch_img.shape[2] != prediction.shape[2] or sketch_img.shape[3] != prediction.shape[3]):
                 #     pred_resize = F.interpolate(prediction, size=sketch_img.shape[2:], mode='bilinear', align_corners=False)
                 #
                 # pred_lab = torch.cat((sketch_img, pred_resize), dim=1)
                 # pred_rgb = lab_to_rgb(pred_lab.cpu().permute(0,2,3,1))
-
-
-                output_ = output.cpu().permute(0, 2, 3, 1)
-                for index,img in enumerate(output_):
+                tot_psnr += calculate_psnr_torch(output, color_img).sum().item()
+                tot_samples += color_img.shape[0]
+                avg_psnr = tot_psnr / tot_samples
+                bar.suffix = "PSNR : {psnr}".format(psnr=avg_psnr)
+                bar.next()
+                
+                for index,img in enumerate(output):
+                    img = img.permute(1,2,0).numpy()
                     img_num = batch_idx * batch_size + index + 1
                     img = (255*np.clip(img, 0, 1)).astype('uint8')
                     new_image_path = os.path.join(result_dir, str(img_num)+".png")
                     plt.imsave(new_image_path, img)
 
-
+        with open(os.path.join(result_dir, 'psnr.txt'), 'w') as fin:
+               fin.write(str(avg_psnr))
+               print('\npsnr : ', avg_psnr) 
+        bar.finish()
 
 
 
